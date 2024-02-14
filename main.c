@@ -6,19 +6,30 @@
 #include "stb_ds.h"
 #include "regexjit.h"
 
+void escape_char(char *buf, size_t s, unsigned char c) {
+    snprintf(buf, s,
+             c == 0 ? "ε" :
+             c == '"' || c == '\\' ? "\\%c" :
+             c <= ' ' || c > '~' ? "0x%02x" :
+             "%c",
+             c
+    );
+}
+
 void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
+    char lbl_from[8], lbl_to[8];
 
     FILE *f = fopen(filename, "w");
-    fputs("digraph g{"
-        "rankdir=LR;"
-        "bgcolor=\"#0f111b\";"
-        "fontcolor=\"#ecf0c1\";"
-        "concentrate=\"true\";",
+    fputs("digraph g {\n"
+        "\trankdir=LR;\n"
+        "\tbgcolor=\"#0f111b\";\n"
+        "\tfontcolor=\"#ecf0c1\";\n"
+        "\tconcentrate=\"true\";\n",
         f
     );
 
     for (int i = 0; i < arrlen(nodes); i++) {
-        fprintf(f, "n%016lx ["
+        fprintf(f, "\tn%016lx ["
             "label=\"%d\" "
             "color=\"%s\" "
             "shape=\"%s\" "
@@ -28,29 +39,59 @@ void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
             i != start_state ? "#00a3cc" : "#e33400"  ,
             nodes[i].final ? "doublecircle" : "circle"
         );
+
         for (int j = 0; j < arrlen(nodes[i].dest); j++) {
-            char c = nodes[i].sym[j];
-            fprintf(f, "n%016lx -> n%016lx ["
-                "label=\"%s%c\" "
+            Range r = nodes[i].sym[j];
+            escape_char(lbl_from, sizeof(lbl_from), r.start);
+            if (r.end != r.start)
+                escape_char(lbl_to, sizeof(lbl_to), r.end);
+            fprintf(f, "\tn%016lx -> n%016lx ["
+                "label=\"%s%s%s\" "
                 "color=\"#ecf0c1\" "
                 "fontcolor=\"#f2ce00\"];\n",
                 (uint64_t)&nodes[i],
                 (uint64_t)&nodes[nodes[i].dest[j]],
-                c == '"' || c == '\\' ? "\\" : c ? "" : "ε",
-                c ? c : ' '
+                lbl_from,
+                r.end != r.start ? "-" : "",
+                r.end != r.start ? lbl_to : ""
             );
         }
+        #undef gv_escape_char
     }
 
-    fputc('}', f);
+    fputs("}\n", f);
     fclose(f);
 
     // lol
     system("dot -Tsvg *.dot -O");
 
 }
-void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, char c){
-    arrpush((*nodes)[n1].sym, c);
+void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r){
+    for (int i = 0; i < arrlen((*nodes)[n1].sym); i++) {
+        if ((*nodes)[n1].dest[i] != n2)
+            continue;
+        Range *r2 = &(*nodes)[n1].sym[i];
+        // r is included in r2
+        if (r2->start <= r.start && r2->end >= r.end)
+            return;
+        // r2 is included in r
+        if (r.start < r2->start && r.end > r2->end) {
+            r2->start = r.start;
+            r2->end = r.end;
+            return;
+        }
+        // r is overlapping lower
+        if (r.start < r2->start && r.end >= r2->start - 1) {
+            r2->start = r.start;
+            return;
+        }
+        // r is overlapping upper
+        if (r.end > r2->end && r.start <= r2->end + 1) {
+            r2->end = r.end;
+            return;
+        }
+    }
+    arrpush((*nodes)[n1].sym, r);
     arrpush((*nodes)[n1].dest, n2);
 }
 
@@ -126,12 +167,12 @@ void apply_op(
 }
 
 void push_op(
-    char op, 
+    char op,
     DynArr(char) *op_stack,
     DynArr(SubExpr) *out_queue,
     DynArr(Node) *nodes
 ){
-    while(arrlen(*op_stack) && 
+    while(arrlen(*op_stack) &&
         prec_of(op) <= prec_of((*op_stack)[arrlen(*op_stack)-1])){
         apply_op(arrpop(*op_stack), out_queue, nodes);
     }
@@ -172,7 +213,7 @@ DynArr(Node) parse(char *str){
             case ')':{
                 should_concat = true;
 
-                while(arrlen(op_stack) 
+                while(arrlen(op_stack)
                     && '('!=op_stack[arrlen(op_stack)-1]){
                     apply_op(arrpop(op_stack), &out_stack, &nodes);
                 }
@@ -193,7 +234,7 @@ DynArr(Node) parse(char *str){
                 uint32_t n2 = arrlen(nodes);
                 arrpush(nodes, (Node){0});
                 printf("c: %c\n", c);
-                add_trans(&nodes, n, n2, c);
+                add_trans(&nodes, n, n2, (Range){c, c});
 
                 arrpush(out_stack, ((SubExpr){n, n2}));
 

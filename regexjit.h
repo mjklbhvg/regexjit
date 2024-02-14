@@ -2,11 +2,15 @@
 #include <stdint.h>
 #define DynArr(X) X*
 
-#define EPSILON 0
+#define EPSILON (Range){0}
+
+typedef struct {
+    unsigned char start, end;
+} Range;
 
 typedef struct Node{
     DynArr(uint32_t) dest;
-    DynArr(char) sym;
+    DynArr(Range) sym;
     bool final;
 }Node;
 
