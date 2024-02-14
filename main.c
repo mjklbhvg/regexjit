@@ -34,8 +34,8 @@ void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
                 "fontcolor=\"#f2ce00\"];\n",
                 (uint64_t)&nodes[i],
                 (uint64_t)&nodes[i].dest[j],
-                c == '"' || c == '\\' ? "\\" : "",
-                c
+                c == '"' || c == '\\' ? "\\" : c ? "" : "ε",
+                c ? c : ' '
             );
         }
     }
