@@ -210,6 +210,28 @@ DynArr(Node) parse(char *str){
                 should_concat = false;
                 arrpush(op_stack, '(');
             }break;
+            case '[':{
+                if(should_concat){
+                    push_op('^');
+                }
+                uint32_t n = arrlen(nodes);
+                arrpush(nodes, (Node){0});
+                uint32_t n2 = arrlen(nodes);
+                arrpush(nodes, (Node){0});
+
+                arrpush(out_stack, ((SubExpr){n, n2}));
+                while (*++str != ']') {
+                    Range r;
+                    if(!*str) parseerror("expected ']'");
+                    r.start = *str++;
+                    if(*str++ != '-' || !*str) parseerror("expected '-'");
+                    r.end = *str;
+                    if (r.end < r.start)
+                        parseerror("invalid char range");
+                    add_trans(&nodes, n, n2, r);
+                }
+                should_concat = true;
+            }break;
             case ')':{
                 should_concat = true;
 
