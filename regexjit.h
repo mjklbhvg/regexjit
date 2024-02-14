@@ -1,4 +1,4 @@
-
+#include <stdbool.h>
 #define DynArr(X) X*
 
 typedef struct Node{
