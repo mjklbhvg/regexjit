@@ -222,6 +222,20 @@ DynArr(Node) parse(char *str){
                 }
                 assert(arrpop(op_stack)=='(');
             }break;
+            case '.':{
+                if(should_concat){
+                    push_op('^');
+                }
+                uint32_t n = arrlen(nodes);
+                arrpush(nodes, (Node){0});
+                uint32_t n2 = arrlen(nodes);
+                arrpush(nodes, (Node){0});
+                add_trans(&nodes, n, n2, (Range){1, 0xff});
+
+                arrpush(out_stack, ((SubExpr){n, n2}));
+
+                should_concat = true;
+            }break;
             case '\\':
                 c = *++str;
                 if(!c) parseerror("imagine escaping the null terminator");
