@@ -56,7 +56,6 @@ void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
                 r.end != r.start ? lbl_to : ""
             );
         }
-        #undef gv_escape_char
     }
 
     fputs("}\n", f);
@@ -273,6 +272,11 @@ DynArr(Node) parse(char *str){
                 add_trans(&nodes, n, n2, (Range){c, c});
 
                 arrpush(out_stack, ((SubExpr){n, n2}));
+
+                if (((c >> 6) & 3) == 2) {
+                    apply_op('^', &out_stack, &nodes);
+                    assert(arrpop(op_stack) == '^');
+                }
 
                 should_concat = true;
             }break;
