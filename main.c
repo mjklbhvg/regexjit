@@ -1,10 +1,12 @@
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #define STB_DS_IMPLEMENTATION
 #include <stdio.h>
 #include <stdint.h>
 #include "stb_ds.h"
 #include "regexjit.h"
+#include "optget.h"
 
 void escape_char(char *buf, size_t s, unsigned char c) {
     snprintf(buf, s,
@@ -16,10 +18,9 @@ void escape_char(char *buf, size_t s, unsigned char c) {
     );
 }
 
-void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
+void dump_graphviz(FILE *f, DynArr(Node) nodes) {
     char lbl_from[8], lbl_to[8];
 
-    FILE *f = fopen(filename, "w");
     fputs("digraph g {\n"
         "\trankdir=LR;\n"
         "\tbgcolor=\"#0f111b\";\n"
@@ -36,7 +37,7 @@ void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
             "fontcolor=\"#ecf0c1\"];\n",
             (uint64_t)&nodes[i],
             i,
-            i != start_state ? "#00a3cc" : "#e33400"  ,
+            i ? "#00a3cc" : "#e33400"  ,
             nodes[i].final ? "doublecircle" : "circle"
         );
 
@@ -59,11 +60,6 @@ void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
     }
 
     fputs("}\n", f);
-    fclose(f);
-
-    // lol
-    system("dot -Tsvg *.dot -O");
-
 }
 
 void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r){
@@ -419,18 +415,129 @@ DynArr(Node) construct_dfa(DynArr(Node) nfa) {
     return dfa;
 }
 
-int main(int argc, char *argv[])
-{
-    char* regex = "abc";
-    if(argc > 1){
-        regex = argv[1];
+OptGetResult push_regex(char *arg, void *dest) {
+    DynArr(char *) *lst = dest;
+    arrpush(*lst, arg);
+    return OptGetOk;
+}
+
+OptGetResult open_file(char *arg, void *dest) {
+    FILE **f = (FILE **)dest;
+    if (!(*f = fopen(arg, "w")))
+        return OptGetErr("fopen failed");
+    return OptGetOk;
+}
+
+// transition matrix has 256 shorts for each state
+// idx zero is is_final flag, rest is next state for input bytes 0x1-0xff
+DfaMat *construct_transition_matrix(DynArr(Node) dfa) {
+    // TODO: check for overflow
+    size_t len = sizeof(DfaMat) + arrlen(dfa) * sizeof(short) * 256;
+    DfaMat *transitions = malloc(len);
+    if (!transitions) return NULL;
+
+    memset(transitions, 0xff, len);
+
+    transitions->state_count = arrlen(dfa);
+
+    for (int i = 0; i < arrlen(dfa); i++) {
+        transitions->mat[i*256] = dfa[i].final;
+        for (int j = 0; j < arrlen(dfa[i].sym); j++) {
+            Range r = dfa[i].sym[j];
+            for (int k = r.start; k <= r.end; k++) {
+                transitions->mat[i*256 + k] = dfa[i].dest[j];
+            }
+        }
     }
-    DynArr(Node) nfa = parse(regex);
-    dump_graphviz("nfa.dot", 0, nfa);
 
-    DynArr(Node) dfa = construct_dfa(nfa);
+    return transitions;
+}
 
-    dump_graphviz("dfa.dot", 0, dfa);
+bool lame_dfa_match(DfaMat *trans, char *str) {
+    uint16_t state = 0;
+    uint8_t c;
+    while ((c = *str++)) {
+        state = trans->mat[state * 256 + c];
+        if (state == 0xffff)
+            return false;
+    }
+    return trans->mat[state * 256];
+}
 
+int main(int argc, char *argv[]) {
+
+    FILE *nfafile = 0, *dfafile = 0;
+
+    DynArr(char *) regexe = 0;
+    DynArr(DfaMat *) dfas_mat = 0;
+
+    bool r = optget(((OptGetSpec[]) {
+        {0, 0, "[-n <file>] [-d <file>] -r <regex>", ogp_fail, 0},
+        {'n', "dump-nfa", "save dot representation of nfa to file", open_file, &nfafile},
+        {'d', "dump-dfa", "save dot representation of dfa to file", open_file, &dfafile},
+        {'r', "regex", "regex to match against lines of stdin", push_regex, &regexe}
+    }));
+
+    if (!r || !arrlen(regexe)) exit(1);
+
+    for (int i = 0; i < arrlen(regexe); i++) {
+        DynArr(Node) nfa = parse(regexe[i]);
+        if (nfafile) dump_graphviz(nfafile, nfa);
+        DynArr(Node) dfa = construct_dfa(nfa);
+        if (dfafile) dump_graphviz(dfafile, dfa);
+
+        DfaMat *t = construct_transition_matrix(dfa);
+        if (!t) {
+            fprintf(stderr, "oom\n");
+            exit(1);
+        }
+        arrpush(dfas_mat, t);
+
+        arrfree(nfa);
+        arrfree(dfa);
+    }
+
+    arrfree(regexe);
+
+    if (nfafile) fclose(nfafile);
+    if (dfafile) fclose(dfafile);
+
+    // lol
+    system("dot -O -Tsvg *.dot");
+
+    char *input = NULL;
+    size_t buf_size;
+    ssize_t input_size;
+
+    while ((input_size = getline(&input, &buf_size, stdin)) != -1) {
+        if (!input_size) continue;
+        if (input[input_size - 1] == '\n')
+            input[input_size - 1] = '\0';
+        puts("lame dfa match:");
+        for (int i = 0; i < arrlen(dfas_mat); ++i != arrlen(dfas_mat) ? putchar('\t') : 0) {
+            struct timespec start_cpu_time, end_cpu_time;
+
+            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_cpu_time) < 0) {
+                perror("clock_gettime");
+                exit(1);
+            }
+
+            bool matches = lame_dfa_match(dfas_mat[i], input);
+
+            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_cpu_time) < 0) {
+                perror("clock_gettime");
+                exit(1);
+            }
+            double cpu_time =
+                (end_cpu_time.tv_sec - start_cpu_time.tv_sec) * 1000.0 +
+                (end_cpu_time.tv_nsec - start_cpu_time.tv_nsec) / 1000000.0;
+            printf("%s, %lfms", matches ? "true" : "false", cpu_time);
+        }
+        putchar('\n');
+    }
+
+    for (int i = 0; i < arrlen(dfas_mat); i++)
+        free(dfas_mat[i]);
+    arrfree(dfas_mat);
     return 0;
 }
