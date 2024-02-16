@@ -65,6 +65,7 @@ void dump_graphviz(char *filename, uint32_t start_state, DynArr(Node) nodes) {
     system("dot -Tsvg *.dot -O");
 
 }
+
 void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r){
     for (int i = 0; i < arrlen((*nodes)[n1].sym); i++) {
         if ((*nodes)[n1].dest[i] != n2)
@@ -268,7 +269,6 @@ DynArr(Node) parse(char *str){
                 arrpush(nodes, (Node){0});
                 uint32_t n2 = arrlen(nodes);
                 arrpush(nodes, (Node){0});
-                printf("c: %c\n", c);
                 add_trans(&nodes, n, n2, (Range){c, c});
 
                 arrpush(out_stack, ((SubExpr){n, n2}));
@@ -293,13 +293,144 @@ DynArr(Node) parse(char *str){
     #undef push_op
 }
 
+void dump_array(DynArr(uint32_t) a) {
+    putchar('{');
+    for (int i = 0; i < arrlen(a); ++i != arrlen(a) ? printf(", ") : 0) {
+        printf("%d", a[i]);
+    }
+    putchar('}');
+}
+
+void insert_sorted(DynArr(uint32_t) *a, uint32_t t) {
+    for (int j = 0; j < arrlen(*a); j++) {
+        if ((*a)[j] == t)
+            return;
+        if ((*a)[j] > t) {
+            arrins(*a, j, t);
+            return;
+        }
+    }
+    arrpush(*a, t);
+}
+
+// Compute the epsilon closure of the list of states 'states' in the nfa 'nfa'
+// and add it to the list of states.
+// input list must be sorted, output list will be sorted
+void epsilon_closure(DynArr(uint32_t) *states, DynArr(Node) nfa) {
+    for (int i = 0; i < arrlen(*states); i++) {
+        uint32_t inner_node_idx = (*states)[i];
+        for (int out = 0; out < arrlen(nfa[inner_node_idx].dest); out++) {
+            // if not an epsilon transition, we can skip it
+            if (nfa[inner_node_idx].sym[out].start)
+                continue;
+            // the state is reachable using only epsilon transitions
+            uint32_t reachable_state = nfa[inner_node_idx].dest[out];
+            // add it to the inner nodes only if it is not already in there
+            // FIXME: this would be better with binary search for larger states
+            // FIXME: probably even more better with a bit set
+            insert_sorted(states, reachable_state);
+        }
+    }
+}
+
+DynArr(Node) construct_dfa(DynArr(Node) nfa) {
+    // The dfa nodes as well as the corresponding list of "inner" nfa nodes
+    DynArr(Node) dfa = 0;
+    DynArr(DynArr(uint32_t)) inner = 0;
+
+    // dfa node indecies that we have not found the transitions for yet
+    DynArr(uint32_t) worklist = 0;
+
+    // The dfa start state
+    arrpush(dfa, (Node){0});
+
+    // contains only the nfa start state for now
+    arrpush(inner, 0);
+    arrpush(inner[0], 0);
+    epsilon_closure(&inner[0], nfa);
+
+    arrpush(worklist, 0);
+
+    while (arrlen(worklist)) {
+        uint32_t workidx = arrpop(worklist);
+        // while we iterate over all inner states of this dfa state
+        // we keep track if any final states are found
+        bool should_be_final = false;
+
+        // check destination states for each character in the alphabet
+        // it would be nicer to iterate over ranges here that can maybe be found
+        // by intersecting all the out ranges and removing the resulting range
+        // from each out range, repeat until intersection is {}
+        // then iterate over all these found intersections and remaining nonempty ranges
+        for (int c = 1; c < 0x100; c++) {
+            DynArr(uint32_t) dest = 0;
+            for (int i = 0; i < arrlen(inner[workidx]); i++) {
+                should_be_final |= nfa[inner[workidx][i]].final;
+
+                // if this inner state has some transition on 'c'
+                // the destination should be added to dest
+                for (int out = 0; out < arrlen(nfa[inner[workidx][i]].sym); out++) {
+                    Range r = nfa[inner[workidx][i]].sym[out];
+                    if (r.start <= c && r.end >= c) {
+                        insert_sorted(&dest, nfa[inner[workidx][i]].dest[out]);
+                    }
+                }
+            }
+
+            // don't need to free dest here :)
+            if (!arrlen(dest))
+                continue;
+
+            epsilon_closure(&dest, nfa);
+
+            int64_t dfa_idx = -1;
+
+            // check if an equivalent state is already in the dfa
+            for (int j = 0; j < arrlen(inner); j++) {
+                if (arrlen(dest) == arrlen(inner[j])
+                        && !memcmp(dest, inner[j], arrlen(dest) * sizeof(uint32_t))) {
+                    dfa_idx = j;
+                    arrfree(dest);
+                    break;
+                }
+            }
+
+            // if not, we need to add it it to the dfa and the worklist
+            if (dfa_idx == -1) {
+                dfa_idx = arrlen(dfa);
+                arrpush(dfa, (Node){0});
+                arrpush(inner, dest);
+                arrpush(worklist, dfa_idx);
+            }
+
+            // finally we add the transition between the current dfa state
+            // and the destination state with the current character
+            add_trans(&dfa, workidx, dfa_idx, (Range){c, c});
+        }
+
+        dfa[workidx].final = should_be_final;
+    }
+
+    arrfree(worklist);
+    for (int i = 0; i < arrlen(inner); i++)
+        arrfree(inner[i]);
+    arrfree(inner);
+
+    return dfa;
+}
+
 int main(int argc, char *argv[])
 {
     char* regex = "abc";
     if(argc > 1){
         regex = argv[1];
     }
-    DynArr(Node)nodes = parse(regex);
-    dump_graphviz("suchfile.dot", 0, nodes);
+    DynArr(Node) nfa = parse(regex);
+    dump_graphviz("nfa.dot", 0, nfa);
+
+    DynArr(Node) dfa = construct_dfa(nfa);
+
+    dump_graphviz("dfa.dot", 0, dfa);
+
     return 0;
 }
