@@ -562,7 +562,7 @@ int main(int argc, char *argv[]) {
         if (!input_size) continue;
         if (input[input_size - 1] == '\n')
             input[input_size - 1] = '\0';
-        puts("lame dfa match:");
+        puts("lame dfa match:\t\t\tcool jit match:");
         for (int i = 0; i < arrlen(dfas_mat); ++i != arrlen(dfas_mat) ? putchar('\t') : 0) {
             struct timespec start_cpu_time, end_cpu_time;
 
@@ -581,8 +581,24 @@ int main(int argc, char *argv[]) {
                 (end_cpu_time.tv_sec - start_cpu_time.tv_sec) * 1000.0 +
                 (end_cpu_time.tv_nsec - start_cpu_time.tv_nsec) / 1000000.0;
             printf("%s, %lfms", matches ? "true" : "false", cpu_time);
+
+            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_cpu_time) < 0) {
+                perror("clock_gettime");
+                exit(1);
+            }
+            matches = regex_fns[i](input);
+            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_cpu_time) < 0) {
+                perror("clock_gettime");
+                exit(1);
+            }
+
+            cpu_time =
+                (end_cpu_time.tv_sec - start_cpu_time.tv_sec) * 1000.0 +
+                (end_cpu_time.tv_nsec - start_cpu_time.tv_nsec) / 1000000.0;
+
+            printf("\t\t%s, %lfms", matches ? "true" : "false", cpu_time);
+            putchar('\n');
         }
-        putchar('\n');
     }
 
     for (int i = 0; i < arrlen(dfas_mat); i++)
