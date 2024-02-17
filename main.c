@@ -297,24 +297,29 @@ void dump_array(DynArr(uint32_t) a) {
     putchar('}');
 }
 
-void insert_sorted(DynArr(uint32_t) *a, uint32_t t) {
+int64_t insert_sorted(DynArr(uint32_t) *a, uint32_t t) {
     for (int j = 0; j < arrlen(*a); j++) {
         if ((*a)[j] == t)
-            return;
+            return -1;
         if ((*a)[j] > t) {
             arrins(*a, j, t);
-            return;
+            return j;
         }
     }
     arrpush(*a, t);
+    return arrlen(*a) - 1;
 }
 
 // Compute the epsilon closure of the list of states 'states' in the nfa 'nfa'
 // and add it to the list of states.
 // input list must be sorted, output list will be sorted
 void epsilon_closure(DynArr(uint32_t) *states, DynArr(Node) nfa) {
-    for (int i = 0; i < arrlen(*states); i++) {
-        uint32_t inner_node_idx = (*states)[i];
+    DynArr(uint32_t) worklist = 0;
+    for (int i = 0; i < arrlen(*states); i++)
+        arrpush(worklist, i);
+
+    while (arrlen(worklist)) {
+        uint32_t inner_node_idx = (*states)[arrpop(worklist)];
         for (int out = 0; out < arrlen(nfa[inner_node_idx].dest); out++) {
             // if not an epsilon transition, we can skip it
             if (nfa[inner_node_idx].sym[out].start)
@@ -324,9 +329,13 @@ void epsilon_closure(DynArr(uint32_t) *states, DynArr(Node) nfa) {
             // add it to the inner nodes only if it is not already in there
             // FIXME: this would be better with binary search for larger states
             // FIXME: probably even more better with a bit set
-            insert_sorted(states, reachable_state);
+            int64_t idx;
+            if ((idx = insert_sorted(states, reachable_state)) > 0) {
+                arrpush(worklist, idx);
+            }
         }
     }
+    arrfree(worklist);
 }
 
 DynArr(Node) construct_dfa(DynArr(Node) nfa) {
