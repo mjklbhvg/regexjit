@@ -372,7 +372,26 @@ void epsilon_closure(DynArr(uint32_t) *states, DynArr(Node) nfa) {
     arrfree(worklist);
 }
 
-DynArr(Node) construct_dfa(DynArr(Node) nfa) {
+DynArr(Node) reverse_automaton(DynArr(Node) nfa, DynArr(uint32_t) *start_states) {
+    DynArr(Node) inv = 0;
+    for (int i = 0; i < arrlen(nfa); i++) {
+        arrpush(inv, ((Node){0, 0, !i}));
+        // if the node was a final node in the nfa, remember it
+        if (nfa[i].final) {
+            arrpush(*start_states, i);
+        }
+    }
+
+    // Now that we have all nodes we can add all the transitions, but swapped
+
+    for (int i = 0; i < arrlen(nfa); i++) {
+        for (int j = 0; j < arrlen(nfa[i].dest); j++)
+            add_trans(&inv, nfa[i].dest[j], i, nfa[i].sym[j]);
+    }
+    return inv;
+}
+
+DynArr(Node) construct_dfa(DynArr(Node) nfa, DynArr(uint32_t) start_states) {
     // The dfa nodes as well as the corresponding list of "inner" nfa nodes
     DynArr(Node) dfa = 0;
     DynArr(DynArr(uint32_t)) inner = 0;
@@ -385,7 +404,9 @@ DynArr(Node) construct_dfa(DynArr(Node) nfa) {
 
     // contains only the nfa start state for now
     arrpush(inner, 0);
-    arrpush(inner[0], 0);
+    for (int i = 0; i < arrlen(start_states); i++) {
+        arrpush(inner[0], start_states[i]);
+    }
     epsilon_closure(&inner[0], nfa);
 
     arrpush(worklist, 0);
@@ -528,7 +549,13 @@ int main(int argc, char *argv[]) {
         DynArr(Node) nfa = parse(regexe[i]);
         if (!nfa) continue;
         if (nfafile) dump_graphviz(nfafile, nfa);
-        DynArr(Node) dfa = construct_dfa(nfa);
+        DynArr(uint32_t) start_states = 0;
+        DynArr(Node) reverse = reverse_automaton(nfa, &start_states);
+        DynArr(Node) reverse_dfa = construct_dfa(reverse, start_states);
+        arrfree(start_states);
+        start_states = 0;
+        DynArr(Node) smaller_nfa = reverse_automaton(reverse_dfa, &start_states);
+        DynArr(Node) dfa = construct_dfa(smaller_nfa, start_states);
         if (dfafile) dump_graphviz(dfafile, dfa);
 
         DfaMat *t = construct_transition_matrix(dfa);
@@ -544,6 +571,10 @@ int main(int argc, char *argv[]) {
         arrfree(nfa);
         arrfree(dfa);
     }
+
+
+    if (!arrlen(regexe))
+        return 0;
 
     arrfree(regexe);
 
