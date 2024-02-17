@@ -513,6 +513,7 @@ int main(int argc, char *argv[]) {
 
     DynArr(char *) regexe = 0;
     DynArr(DfaMat *) dfas_mat = 0;
+    DynArr(compiled_regex_fn) regex_fns = 0;
 
     bool r = optget(((OptGetSpec[]) {
         {0, 0, "[-n <file>] [-d <file>] -r <regex>", ogp_fail, 0},
@@ -536,6 +537,9 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
         arrpush(dfas_mat, t);
+
+        compiled_regex_fn f = compile_regex(&dfa);
+        arrpush(regex_fns, f);
 
         arrfree(nfa);
         arrfree(dfa);
