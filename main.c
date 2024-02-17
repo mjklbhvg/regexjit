@@ -87,6 +87,7 @@ void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r){
             return;
         }
     }
+    // Not overlapping
     arrpush((*nodes)[n1].sym, r);
     arrpush((*nodes)[n1].dest, n2);
 }
@@ -103,50 +104,50 @@ int prec_of(char op){
     }
 }
 
-void parseerror(char* msg){
-    fprintf(stderr, "PARSE ERROR: %s\n", msg);
-    exit(1);
+void parseerror(char* msg, char *regex, int location){
+    fprintf(stderr, ERROR_PREFIX "%s\n%s\n%*s" CONTEXT_ARROW "\n",
+        msg, regex, location, "");
 }
 
-void apply_op(
+int apply_op(
     char op,
-    DynArr(SubExpr) *out_queue,
+    DynArr(SubExpr) *out_stack,
     DynArr(Node) *nodes
 ){
 
-    if(!arrlen(*out_queue)){
-        parseerror("expected stuff before operator");
+    if(!arrlen(*out_stack)){
+        return -1;
     }
     switch(op){
         case '*':{
-            SubExpr e = (*out_queue)[arrlen(*out_queue)-1];
+            SubExpr e = (*out_stack)[arrlen(*out_stack)-1];
             add_trans(nodes, e.start, e.end, EPSILON);
             add_trans(nodes, e.end, e.start, EPSILON);
 
         }break;
         case '+':{
-            SubExpr e = (*out_queue)[arrlen(*out_queue)-1];
+            SubExpr e = (*out_stack)[arrlen(*out_stack)-1];
             add_trans(nodes, e.end, e.start, EPSILON);
         }break;
         case '?':{
-            SubExpr e = (*out_queue)[arrlen(*out_queue)-1];
+            SubExpr e = (*out_stack)[arrlen(*out_stack)-1];
             add_trans(nodes, e.start, e.end, EPSILON);
         }break;
         case '^':{
-            SubExpr b = arrpop(*out_queue);
-            if(!arrlen(*out_queue)){
-                parseerror("expected snd stuff before operator");
+            SubExpr b = arrpop(*out_stack);
+            if(!arrlen(*out_stack)){
+                return -1;
             }
-            SubExpr a = arrpop(*out_queue);
+            SubExpr a = arrpop(*out_stack);
             add_trans(nodes, a.end, b.start, EPSILON);
-            arrpush(*out_queue, ((SubExpr){a.start, b.end}));
+            arrpush(*out_stack, ((SubExpr){a.start, b.end}));
         }break;
         case '|':{
-            SubExpr a = arrpop(*out_queue);
-            if(!arrlen(*out_queue)){
-                parseerror("expected snd stuff before operator");
+            SubExpr a = arrpop(*out_stack);
+            if(!arrlen(*out_stack)){
+                return -1;
             }
-            SubExpr b = arrpop(*out_queue);
+            SubExpr b = arrpop(*out_stack);
 
             uint32_t start = arrlen(*nodes);
             arrpush(*nodes, (Node){0});
@@ -157,37 +158,49 @@ void apply_op(
             add_trans(nodes, start, b.start, EPSILON);
             add_trans(nodes, a.end, end, EPSILON);
             add_trans(nodes, b.end, end, EPSILON);
-            arrpush(*out_queue, ((SubExpr){start, end}));
+            arrpush(*out_stack, ((SubExpr){start, end}));
         }break;
     }
+    return 0;
 }
 
-void push_op(
-    char op,
-    DynArr(char) *op_stack,
-    DynArr(SubExpr) *out_queue,
-    DynArr(Node) *nodes
+int push_op(
+    OpToken op,
+    DynArr(OpToken) *op_stack,
+    DynArr(SubExpr) *out_stack,
+    DynArr(Node) *nodes,
+    char *regex
 ){
-    while(arrlen(*op_stack) &&
-        prec_of(op) <= prec_of((*op_stack)[arrlen(*op_stack)-1])){
-        apply_op(arrpop(*op_stack), out_queue, nodes);
+    OpToken to_apply;
+    while(
+        arrlen(*op_stack) &&
+        prec_of(op.op) <= prec_of((to_apply = (*op_stack)[arrlen(*op_stack)-1]).op)
+    ){
+        if (apply_op(to_apply.op, out_stack, nodes) < 0) {
+            parseerror("Operator expected argument", regex, to_apply.source_location);
+            return -1;
+        }
+        (void)arrpop(*op_stack);
     }
     arrpush(*op_stack, op);
+    return 0;
 }
-
 
 DynArr(Node) parse(char *str){
     DynArr(Node) nodes = 0;
 
     arrpush(nodes, (Node){0});
 
-    #define push_op(c) push_op(c, &op_stack, &out_stack, &nodes);
+    #define push_op(c) do {\
+        if (push_op((OpToken){c, i}, &op_stack, &out_stack, &nodes, str) < 0) return 0; \
+        } while (0)
 
-    DynArr(char) op_stack = 0;
+    DynArr(OpToken) op_stack = 0;
     DynArr(SubExpr) out_stack = 0;
 
     bool should_concat = false;
-    for(char c = *str; *str != 0; c = *++str){
+    for(uint32_t i = 0; str[i]; i++){
+        char c = str[i];
         switch(c){
             case '?':
             case '+':
@@ -204,7 +217,7 @@ DynArr(Node) parse(char *str){
                     push_op('^');
                 }
                 should_concat = false;
-                arrpush(op_stack, '(');
+                arrpush(op_stack, ((OpToken){'(', i}));
             }break;
             case '[':{
                 if(should_concat){
@@ -216,14 +229,19 @@ DynArr(Node) parse(char *str){
                 arrpush(nodes, (Node){0});
 
                 arrpush(out_stack, ((SubExpr){n, n2}));
-                while (*++str != ']') {
+                while (str[++i] != ']') {
                     Range r;
-                    if(!*str) parseerror("expected ']'");
-                    r.start = *str++;
-                    if(*str++ != '-' || !*str) parseerror("expected '-'");
-                    r.end = *str;
+                    if(!str[i]) {
+                        parseerror("expected ']'", str, i);
+                        return 0;
+                    }
+                    r.start = str[i++];
+                    if(str[i++] != '-' || !str[i]) {
+                        parseerror("expected '-'", str, i - 1);
+                    }
+                    r.end = str[i];
                     if (r.end < r.start)
-                        parseerror("invalid char range");
+                        parseerror("invalid char range", str, i);
                     add_trans(&nodes, n, n2, r);
                 }
                 should_concat = true;
@@ -231,14 +249,23 @@ DynArr(Node) parse(char *str){
             case ')':{
                 should_concat = true;
 
-                while(arrlen(op_stack)
-                    && '('!=op_stack[arrlen(op_stack)-1]){
-                    apply_op(arrpop(op_stack), &out_stack, &nodes);
+                OpToken to_apply;
+
+                while (
+                    arrlen(op_stack)
+                    && '(' != (to_apply = op_stack[arrlen(op_stack)-1]).op
+                ) {
+                    if (apply_op(to_apply.op, &out_stack, &nodes) < 0) {
+                        parseerror("Operator expected argument", str, to_apply.source_location);
+                        return 0;
+                    }
+                    (void)arrpop(op_stack);
                 }
                 if(!(arrlen(op_stack))){
-                    parseerror("missmachted parens");
+                    parseerror("missmatched parens", str, i);
+                    return 0;
                 }
-                assert(arrpop(op_stack)=='(');
+                assert(arrpop(op_stack).op == '(');
             }break;
             case '.':{
                 if(should_concat){
@@ -255,8 +282,11 @@ DynArr(Node) parse(char *str){
                 should_concat = true;
             }break;
             case '\\':
-                c = *++str;
-                if(!c) parseerror("imagine escaping the null terminator");
+                c = str[++i];
+                if(!c) {
+                    parseerror("imagine escaping the null terminator", str, i);
+                    return 0;
+                }
             default:{
                 if(should_concat){
                     push_op('^');
@@ -271,18 +301,32 @@ DynArr(Node) parse(char *str){
 
                 if (((c >> 6) & 3) == 2) {
                     apply_op('^', &out_stack, &nodes);
-                    assert(arrpop(op_stack) == '^');
+                    assert(arrpop(op_stack).op == '^');
                 }
 
                 should_concat = true;
             }break;
         }
     }
-    while(arrlen(op_stack)){
-        apply_op(arrpop(op_stack), &out_stack, &nodes);
+    while(arrlen(op_stack)) {
+        OpToken to_apply = arrpop(op_stack);
+        if (to_apply.op == '(') {
+            parseerror("Mismatched parens", str, to_apply.source_location);
+            return 0;
+        }
+        if (apply_op(to_apply.op, &out_stack, &nodes) < 0) {
+            parseerror("Operator expected argument", str, to_apply.source_location);
+            return 0;
+        }
+    }
+
+    if (!arrlen(out_stack)) {
+        parseerror("expression must be nonempty", str, 0);
+        return 0;
     }
 
     SubExpr e = arrpop(out_stack);
+    assert(!arrlen(out_stack)); // Not sure if this can actually happen
     add_trans(&nodes, 0, e.start, EPSILON);
     nodes[e.end].final = 1;
     return nodes;
@@ -491,6 +535,7 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < arrlen(regexe); i++) {
         DynArr(Node) nfa = parse(regexe[i]);
+        if (!nfa) continue;
         if (nfafile) dump_graphviz(nfafile, nfa);
         DynArr(Node) dfa = construct_dfa(nfa);
         if (dfafile) dump_graphviz(dfafile, dfa);
@@ -512,7 +557,8 @@ int main(int argc, char *argv[]) {
     if (dfafile) fclose(dfafile);
 
     // lol
-    system("dot -O -Tsvg *.dot");
+    if (nfafile || dfafile)
+        system("dot -O -Tsvg *.dot");
 
     char *input = NULL;
     size_t buf_size;
