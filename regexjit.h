@@ -25,11 +25,16 @@ typedef struct Node{
 }Node;
 
 typedef struct{
-    uint32_t start;
-    uint32_t end;
+    uint32_t start; //inclusive
+    uint32_t end; //inclusive
 }SubExpr;
 
 typedef struct {
     char op;
     int source_location;
 } OpToken;
+
+
+typedef bool (*compiled_regex_fn)(char* str);
+
+compiled_regex_fn compile_regex(DynArr(Node) *dfa);
