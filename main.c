@@ -105,20 +105,24 @@ int prec_of(char op){
 }
 
 void parseerror(char* msg, char *regex, int location){
-    fprintf(stderr, ERROR_PREFIX "%s\n%s\n%*s" CONTEXT_ARROW "\n",
-        msg, regex, location, "");
+    fprintf(stderr, "%s\n%*s" CONTEXT_ARROW "\n" ERROR_PREFIX "%s\n",
+        regex ? regex : "", location, "", msg);
 }
 
 int apply_op(
-    char op,
+    OpToken op,
     DynArr(SubExpr) *out_stack,
-    DynArr(Node) *nodes
+    DynArr(Node) *nodes,
+    char *regex
 ){
 
-    if(!arrlen(*out_stack)){
+    if(!arrlen(*out_stack)) {
+        fail:
+        parseerror("Operator expected an argument", regex, op.source_location);
         return -1;
     }
-    switch(op){
+
+    switch(op.op){
         case '*':{
             SubExpr e = (*out_stack)[arrlen(*out_stack)-1];
             add_trans(nodes, e.start, e.end, EPSILON);
@@ -144,9 +148,9 @@ int apply_op(
         }break;
         case '|':{
             SubExpr a = arrpop(*out_stack);
-            if(!arrlen(*out_stack)){
-                return -1;
-            }
+            if(!arrlen(*out_stack))
+                goto fail;
+
             SubExpr b = arrpop(*out_stack);
 
             uint32_t start = arrlen(*nodes);
@@ -171,16 +175,12 @@ int push_op(
     DynArr(Node) *nodes,
     char *regex
 ){
-    OpToken to_apply;
     while(
         arrlen(*op_stack) &&
-        prec_of(op.op) <= prec_of((to_apply = (*op_stack)[arrlen(*op_stack)-1]).op)
+        prec_of(op.op) <= prec_of((*op_stack)[arrlen(*op_stack)-1].op)
     ){
-        if (apply_op(to_apply.op, out_stack, nodes) < 0) {
-            parseerror("Operator expected argument", regex, to_apply.source_location);
+        if (apply_op(arrpop(*op_stack), out_stack, nodes, regex) < 0)
             return -1;
-        }
-        (void)arrpop(*op_stack);
     }
     arrpush(*op_stack, op);
     return 0;
@@ -204,25 +204,36 @@ DynArr(Node) parse(char *str){
         switch(c){
             case '?':
             case '+':
-            case '*':{
-                should_concat = true;
-                push_op(c);
-            }break;
+            case '*':
             case '|':{
-                should_concat = false;
+                should_concat = c != '|';
                 push_op(c);
             }break;
             case '(':{
-                if(should_concat){
-                    push_op('^');
-                }
+                if(should_concat) push_op('^');
                 should_concat = false;
                 arrpush(op_stack, ((OpToken){'(', i}));
             }break;
-            case '[':{
-                if(should_concat){
-                    push_op('^');
+            case ')':{
+                should_concat = true;
+
+                while (
+                    arrlen(op_stack)
+                    && '(' != op_stack[arrlen(op_stack)-1].op
+                ) {
+                    if (apply_op(arrpop(op_stack), &out_stack, &nodes, str) < 0)
+                        return 0;
                 }
+                if(!(arrlen(op_stack))){
+                    parseerror("missmatched parens, missing '('", str, i);
+                    return 0;
+                }
+                assert(arrpop(op_stack).op == '(');
+            }break;
+            case '[':{
+                if(should_concat) push_op('^');
+                should_concat = true;
+
                 uint32_t n = arrlen(nodes);
                 arrpush(nodes, (Node){0});
                 uint32_t n2 = arrlen(nodes);
@@ -232,40 +243,21 @@ DynArr(Node) parse(char *str){
                 while (str[++i] != ']') {
                     Range r;
                     if(!str[i]) {
-                        parseerror("expected ']'", str, i);
+                        parseerror("invalid char range, expected ']'", str, i);
                         return 0;
                     }
                     r.start = str[i++];
                     if(str[i++] != '-' || !str[i]) {
-                        parseerror("expected '-'", str, i - 1);
-                    }
-                    r.end = str[i];
-                    if (r.end < r.start)
-                        parseerror("invalid char range", str, i);
-                    add_trans(&nodes, n, n2, r);
-                }
-                should_concat = true;
-            }break;
-            case ')':{
-                should_concat = true;
-
-                OpToken to_apply;
-
-                while (
-                    arrlen(op_stack)
-                    && '(' != (to_apply = op_stack[arrlen(op_stack)-1]).op
-                ) {
-                    if (apply_op(to_apply.op, &out_stack, &nodes) < 0) {
-                        parseerror("Operator expected argument", str, to_apply.source_location);
+                        parseerror("invalid char range, expected '-'", str, i - 1);
                         return 0;
                     }
-                    (void)arrpop(op_stack);
+                    r.end = str[i];
+                    if (r.end < r.start) {
+                        parseerror("invalid char range, expected (start <= end)", str, i - 1);
+                        return 0;
+                    }
+                    add_trans(&nodes, n, n2, r);
                 }
-                if(!(arrlen(op_stack))){
-                    parseerror("missmatched parens", str, i);
-                    return 0;
-                }
-                assert(arrpop(op_stack).op == '(');
             }break;
             case '.':{
                 if(should_concat){
@@ -284,7 +276,7 @@ DynArr(Node) parse(char *str){
             case '\\':
                 c = str[++i];
                 if(!c) {
-                    parseerror("imagine escaping the null terminator", str, i);
+                    parseerror("imagine escaping the null terminator", str, i - 1);
                     return 0;
                 }
             default:{
@@ -300,7 +292,7 @@ DynArr(Node) parse(char *str){
                 arrpush(out_stack, ((SubExpr){n, n2}));
 
                 if (((c >> 6) & 3) == 2) {
-                    apply_op('^', &out_stack, &nodes);
+                    apply_op((OpToken){'^', i}, &out_stack, &nodes, str);
                     assert(arrpop(op_stack).op == '^');
                 }
 
@@ -311,13 +303,11 @@ DynArr(Node) parse(char *str){
     while(arrlen(op_stack)) {
         OpToken to_apply = arrpop(op_stack);
         if (to_apply.op == '(') {
-            parseerror("Mismatched parens", str, to_apply.source_location);
+            parseerror("mismatched parens, missing ')'", str, to_apply.source_location);
             return 0;
         }
-        if (apply_op(to_apply.op, &out_stack, &nodes) < 0) {
-            parseerror("Operator expected argument", str, to_apply.source_location);
+        if (apply_op(to_apply, &out_stack, &nodes, str) < 0)
             return 0;
-        }
     }
 
     if (!arrlen(out_stack)) {
