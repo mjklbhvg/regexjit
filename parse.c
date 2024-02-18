@@ -58,18 +58,58 @@ void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r){
         }
         // r is overlapping lower
         if (r.start < r2->start && r.end >= r2->start - 1) {
-            r2->start = r.start;
-            return;
+            r.end = r2->end;
+            arrdel((*nodes)[n1].sym, i);
+            arrdel((*nodes)[n1].dest, i);
+            i = -1;
+            continue;
         }
         // r is overlapping upper
         if (r.end > r2->end && r.start <= r2->end + 1) {
-            r2->end = r.end;
-            return;
+            r.start = r2->start;
+            arrdel((*nodes)[n1].sym, i);
+            arrdel((*nodes)[n1].dest, i);
+            i = -1;
+            continue;
         }
     }
     // Not overlapping
     arrpush((*nodes)[n1].sym, r);
     arrpush((*nodes)[n1].dest, n2);
+}
+
+void sub_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r) {
+    for (int i = 0; i < arrlen((*nodes)[n1].sym); i++) {
+        if ((*nodes)[n1].dest[i] != n2)
+            continue;
+        Range *r2 = &(*nodes)[n1].sym[i];
+        // r is included in r2
+        if (r2->start < r.start && r2->end > r.end) {
+            uint32_t tmp = r2->end;
+            r2->end = r.start - 1;
+            r.start = r.end + 1;
+            r.end = tmp;
+            arrpush((*nodes)[n1].sym, r);
+            arrpush((*nodes)[n1].dest, n2);
+            return;
+        }
+        // r2 is included in r
+        if (r.start <= r2->start && r.end >= r2->end) {
+            arrdel((*nodes)[n1].sym, i);
+            arrdel((*nodes)[n1].dest, i);
+            return;
+        }
+        // r is overlapping lower
+        if (r.start <= r2->start && r.end >= r2->start) {
+            r2->start = r.end + 1;
+            continue;
+        }
+        // r is overlapping upper
+        if (r.end >= r2->end && r.start <= r2->end) {
+            r2->end = r.start - 1;
+            continue;
+        }
+    }
 }
 
 #define ADD_NODE_PAIR(nodes, n1, n2) \
@@ -180,6 +220,14 @@ DynArr(Node) parse(char *str){
                 ADD_NODE_PAIR(p.nodes, start, end);
                 arrpush(p.expr_stack, ((SubExpr){start, end}));
 
+                bool invert = false;
+
+                if (str[i+1] == '^') {
+                    invert = true;
+                    i++;
+                    add_trans(&p.nodes, start, end, (Range){1, 0xff});
+                }
+
                 while (str[++i] != ']') {
                     Range r;
                     if(!str[i]) {
@@ -196,7 +244,10 @@ DynArr(Node) parse(char *str){
                         parseerror("invalid char range, expected (start <= end)", str, i - 1);
                         goto fail;
                     }
-                    add_trans(&p.nodes, start, end, r);
+                    if (invert)
+                        sub_trans(&p.nodes, start, end, r);
+                    else
+                        add_trans(&p.nodes, start, end, r);
                 }
             }break;
             case '.':{
