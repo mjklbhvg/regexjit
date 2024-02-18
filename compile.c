@@ -92,10 +92,10 @@ void asm_cmp(CodegenState *state, unsigned char imm){
     arrpush(state->code, 0x3c);
     arrpush(state->code, imm);
 }
-uint32_t asm_jmpg(CodegenState *state, uint32_t label){
-    // jg rel32
+uint32_t asm_jmpa(CodegenState *state, uint32_t label){
+    // ja rel32
     arrpush(state->code, 0x0f);
-    arrpush(state->code, 0x8f);
+    arrpush(state->code, 0x87);
     for (int i = 0; i < 4; i++) {
         arrpush(state->code, ((unsigned char*)&label)[i]);
     }
@@ -134,7 +134,7 @@ void gen_transitions(CodegenState *state, unsigned char *mins, uint32_t *dest, i
     int i = (l+r)/2;
     LOG("%*sIF input <= %d {\n", DEPTH, "", mins[i]);
     asm_cmp(state, mins[i]);
-    uint32_t reloc = asm_jmpg(state, 0);
+    uint32_t reloc = asm_jmpa(state, 0);
     if (VERBOSE) DEPTH += LOG_INDENTWIDTH;
     gen_transitions(state, mins, dest, l, i-1);
 

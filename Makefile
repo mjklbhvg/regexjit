@@ -1,4 +1,4 @@
-CFLAGS=-Wall -Wpedantic -g
+CFLAGS=-Wall -Wpedantic -g -O3
 
 .PHONY: clean
 
