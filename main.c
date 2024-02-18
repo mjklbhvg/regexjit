@@ -254,13 +254,28 @@ int main(int argc, char *argv[]) {
             continue;
         }
         if (nfafile) dump_graphviz(nfafile, nfa);
+
+        // See: https://en.wikipedia.org/wiki/DFA_minimization#Brzozowski's_algorithm
+        // To get a minimal dfa, first reverse the input
         DynArr(uint32_t) start_states = 0;
         DynArr(Node) reverse = reverse_automaton(nfa, &start_states);
+        free_nodes(nfa);
+
+        // make it deterministic
         DynArr(Node) reverse_dfa = construct_dfa(reverse, start_states);
         arrfree(start_states);
         start_states = 0;
+        free_nodes(reverse);
+
+        // reverse it again, to get the original language back.
+        // this might make the automaton nondeterministic again
         DynArr(Node) smaller_nfa = reverse_automaton(reverse_dfa, &start_states);
+        free_nodes(reverse_dfa);
+
+        // so just make it deterministic again
         DynArr(Node) dfa = construct_dfa(smaller_nfa, start_states);
+        free_nodes(smaller_nfa);
+        arrfree(start_states);
         if (dfafile) dump_graphviz(dfafile, dfa);
 
         DfaMat *t = construct_transition_matrix(dfa);
@@ -277,8 +292,7 @@ int main(int argc, char *argv[]) {
         if (codefile)
             fwrite(*(char **)&f, len, 1, codefile);
 
-        arrfree(nfa);
-        arrfree(dfa);
+        free_nodes(dfa);
     }
 
     if (!r || !arrlen(regex_fns)) {
@@ -305,45 +319,27 @@ int main(int argc, char *argv[]) {
         printf("\x1b[4mlame dfa match:\x1b[m\t\t\t\x1b[4mcool jit match:\x1b[m");
         for (int i = 0; i < arrlen(dfas_mat); ++i != arrlen(dfas_mat) ? putchar('\t') : 0) {
             printf("\n\x1b[1m%s\x1b[m:\n", regexe[i]);
-            struct timespec start_cpu_time, end_cpu_time;
 
-            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_cpu_time) < 0) {
-                perror("clock_gettime");
-                exit(1);
-            }
+            #define TIME(cpu_time, code) do { \
+                struct timespec start_cpu_time, end_cpu_time; \
+                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_cpu_time); \
+                code; \
+                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_cpu_time); \
+                cpu_time = \
+                    (end_cpu_time.tv_sec - start_cpu_time.tv_sec) * 1000.0 + \
+                    (end_cpu_time.tv_nsec - start_cpu_time.tv_nsec) / 1000000.0; \
+            } while (0)
 
-            bool matches = lame_dfa_match(dfas_mat[i], input);
+            bool matches;
+            double cpu_time;
 
-            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_cpu_time) < 0) {
-                perror("clock_gettime");
-                exit(1);
-            }
-            double cpu_time =
-                (end_cpu_time.tv_sec - start_cpu_time.tv_sec) * 1000.0 +
-                (end_cpu_time.tv_nsec - start_cpu_time.tv_nsec) / 1000000.0;
+            TIME(cpu_time, matches = lame_dfa_match(dfas_mat[i], input));
             printf("%s, %lfms", matches ? TRUE_STR : FALSE_STR, cpu_time);
 
-            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_cpu_time) < 0) {
-                perror("clock_gettime");
-                exit(1);
-            }
-            matches = regex_fns[i](input);
-            if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_cpu_time) < 0) {
-                perror("clock_gettime");
-                exit(1);
-            }
-
-            cpu_time =
-                (end_cpu_time.tv_sec - start_cpu_time.tv_sec) * 1000.0 +
-                (end_cpu_time.tv_nsec - start_cpu_time.tv_nsec) / 1000000.0;
-
+            TIME(cpu_time, matches = regex_fns[i](input));
             printf("\t\t%s, %lfms", matches ? TRUE_STR : FALSE_STR, cpu_time);
         }
         putchar('\n');
     }
-
-    for (int i = 0; i < arrlen(dfas_mat); i++)
-        free(dfas_mat[i]);
-    arrfree(dfas_mat);
     return 0;
 }
