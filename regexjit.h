@@ -25,7 +25,7 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose);
 
 void dump_graphviz(FILE *f, DynArr(Node) nodes);
 
-DynArr(Node) parse(char *str);
+DynArr(Node) parse(const char *str);
 
 void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r);
 

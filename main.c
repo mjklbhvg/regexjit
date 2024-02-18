@@ -8,13 +8,15 @@
 #include "regexjit.h"
 #include "optget.h"
 
+#ifdef DEBUG
 void dump_array(DynArr(uint32_t) a) {
     putchar('{');
     for (int i = 0; i < arrlen(a); ++i != arrlen(a) ? printf(", ") : 0) {
-        printf("%d", a[i]);
+        printf("%u", a[i]);
     }
     putchar('}');
 }
+#endif
 
 #define TRUE_STR "\x1b[32mtrue\x1b[m"
 #define FALSE_STR "\x1b[31mfalse\x1b[m"
@@ -179,13 +181,13 @@ DynArr(Node) construct_dfa(DynArr(Node) nfa, DynArr(uint32_t) start_states) {
     return dfa;
 }
 
-OptGetResult push_regex(char *arg, void *dest) {
-    DynArr(char *) *lst = dest;
+OptGetResult push_regex(const char *arg, void *dest) {
+    DynArr(const char *) *lst = dest;
     arrpush(*lst, arg);
     return OptGetOk;
 }
 
-OptGetResult open_file(char *arg, void *dest) {
+OptGetResult open_file(const char *arg, void *dest) {
     FILE **f = (FILE **)dest;
     if (!(*f = fopen(arg, "w")))
         return OptGetErr("fopen failed");
@@ -233,7 +235,7 @@ int main(int argc, char *argv[]) {
     FILE *nfafile = 0, *dfafile = 0, *codefile = 0;
     bool verbose = false;
 
-    DynArr(char *) regexe = 0;
+    DynArr(const char *) regexe = 0;
     DynArr(DfaMat *) dfas_mat = 0;
     DynArr(compiled_regex_fn) regex_fns = 0;
 
@@ -297,16 +299,17 @@ int main(int argc, char *argv[]) {
 
     if (!r || !arrlen(regex_fns)) {
         fputs("Need at least one regular expression.\nTry -h for help.\n", stderr);
-        return 0;
+        goto end;
     }
 
     if (nfafile) fclose(nfafile);
     if (dfafile) fclose(dfafile);
     if (codefile) fclose(codefile);
 
-    // lol
+    #ifdef DEBUG
     if (nfafile || dfafile)
         system("dot -O -Tsvg *.dot");
+    #endif
 
     char *input = NULL;
     size_t buf_size;
@@ -341,5 +344,11 @@ int main(int argc, char *argv[]) {
         }
         putchar('\n');
     }
+    end:
+    for (int i = 0; i < arrlen(dfas_mat); i++)
+        free(dfas_mat[i]);
+    arrfree(dfas_mat);
+    arrfree(regexe);
+    arrfree(regex_fns);
     return 0;
 }

@@ -116,7 +116,7 @@ void jmp_state(CodegenState *state, uint32_t dest){
         // ret
         arrpush(state->code, 0xc3);
     }else{
-        LOG("%*sJMP STATE_%d\n", DEPTH, "", dest);
+        LOG("%*sJMP STATE_%u\n", DEPTH, "", dest);
         // jmp rel32
         arrpush(state->code, 0xe9);
         arrpush(state->jmp_relocs, arrlen(state->code));
@@ -171,22 +171,24 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose){
         // states all the ranges go to
         DynArr(uint32_t) states = 0;
         unsigned char prev = 0;
-        for (int i = 0; i < arrlen(dest); i++) {
-            if(sym[i].start != prev+1){
-                arrpush(ends, sym[i].start-1);
+        for (int j = 0; j < arrlen(dest); j++) {
+            if(sym[j].start != prev+1){
+                arrpush(ends, sym[j].start-1);
                 arrpush(states, FAILSTATE);
             }
-            arrpush(ends, sym[i].end);
-            arrpush(states, dest[i]);
-            prev = sym[i].end;
+            arrpush(ends, sym[j].end);
+            arrpush(states, dest[j]);
+            prev = sym[j].end;
         }
         arrpush(states, FAILSTATE); // there is 1 more range than there are checks
         LOG("// segmented state transitions: (segment end, destination state)\n//");
-        for (int i = 0; i < arrlen(ends); i++) {
-            LOG("(%c, %d) ", ends[i], states[i]);
+        for (int j = 0; j < arrlen(ends); j++) {
+            LOG("(%c, %u) ", ends[j], states[j]);
         }
         LOG("\n");
         gen_transitions(&state, ends, states, 0, arrlen(ends)-1);
+        arrfree(states);
+        arrfree(ends);
     }
 
     // resolve labels
@@ -208,6 +210,10 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose){
     *len = arrlen(state.code);
 
     LOG("Generated %lu bytes of code\n", arrlen(state.code));
+
+    arrfree(state.code);
+    arrfree(state.jmp_relocs);
+    arrfree(state.labels);
 
     return *(compiled_regex_fn *)&memory;
 }

@@ -19,13 +19,13 @@ typedef struct{
 }OpToken;
 
 typedef struct{
-    char *regex;
+    const char *regex;
     DynArr(OpToken) op_stack;
     DynArr(SubExpr) expr_stack;
     DynArr(Node)    nodes;
 }ParserState;
 
-void parseerror(char* msg, char *regex, int location){
+void parseerror(char* msg, const char *regex, int location){
     int len = location;
     for (int i = 0; i < location; i++) {
         if (((regex[i] >> 6) & 3) == 2)
@@ -178,7 +178,7 @@ int push_op(ParserState *p, OpToken op){
 }
 
 
-DynArr(Node) parse(char *str){
+DynArr(Node) parse(const char *str){
     ParserState p = {0};
     p.regex = str;
     arrpush(p.nodes, (Node){0});
@@ -272,7 +272,6 @@ DynArr(Node) parse(char *str){
                 }
             default:{
                 if(should_concat) push_op('^');
-                should_concat = true;
 
                 ADD_NODE_PAIR(p.nodes, start, end)
                 add_trans(&p.nodes, start, end, (Range){c, c});
@@ -280,8 +279,10 @@ DynArr(Node) parse(char *str){
 
                 if (((c >> 6) & 3) == 2) {
                     apply_op(&p, (OpToken){'^', i});
-                    assert(arrpop(p.op_stack).op == '^');
+                    if (should_concat)
+                        assert(arrpop(p.op_stack).op == '^');
                 }
+                should_concat = true;
             }break;
         }
     }

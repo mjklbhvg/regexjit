@@ -8,7 +8,7 @@
 #include <stdlib.h>
 
 typedef struct { const char *errmsg; } OptGetResult;
-typedef OptGetResult (OptGetParser)(char *arg, void *userdata);
+typedef OptGetResult (OptGetParser)(const char *arg, void *userdata);
 
 typedef struct {
     // set either to 0 to only specify a short or long opt
@@ -160,7 +160,7 @@ bool __optget_internal(int argc, char **argv, size_t num_specs, OptGetSpec specs
 }
 
 // Parses an integer option using strtol
-OptGetResult ogp_int(char *arg, void *dest) {
+OptGetResult ogp_int(const char *arg, void *dest) {
     char *end;
     int i = (int)strtol(arg, &end, 10);
     if (*end)
@@ -170,7 +170,7 @@ OptGetResult ogp_int(char *arg, void *dest) {
 }
 
 // Parse an integer and assert its > 0
-OptGetResult ogp_positive_int(char *arg, void *dest) {
+OptGetResult ogp_positive_int(const char *arg, void *dest) {
     OptGetResult r = ogp_int(arg, dest);
     if (r.errmsg) return r;
     if (*(int *)dest <= 0) {
@@ -180,7 +180,7 @@ OptGetResult ogp_positive_int(char *arg, void *dest) {
 }
 
 // Parse an integer and assert its >= 0
-OptGetResult ogp_nonneg_int(char *arg, void *dest) {
+OptGetResult ogp_nonneg_int(const char *arg, void *dest) {
     OptGetResult r = ogp_int(arg, dest);
     if (r.errmsg) return r;
     if (*(int *)dest < 0) {
@@ -190,13 +190,13 @@ OptGetResult ogp_nonneg_int(char *arg, void *dest) {
 }
 
 // Store a pointer to the argument in dest
-OptGetResult ogp_id(char *arg, void *dest) {
-    *((char **) dest) = arg;
+OptGetResult ogp_id(const char *arg, void *dest) {
+    *((char **) dest) = (char *)arg; // :(
     return OptGetOk;
 }
 
 // Always fails with the message 'Unknown Argument'
-OptGetResult ogp_fail(char *arg, void *dest) {
+OptGetResult ogp_fail(const char *arg, void *dest) {
     (void)arg; (void)dest;
     return OptGetErr("Unknown Argument.");
 }
