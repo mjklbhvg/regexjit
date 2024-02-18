@@ -78,7 +78,7 @@ void __optget_print_help(int argc, char **argv, size_t num_specs, OptGetSpec spe
                 redefined_h = true;
         }
         if (spec.longopt) {
-            printf("%s\x1b[32m--%s\x1b[m", spec.shortopt ? ", " : "", spec.longopt);
+            printf("%s\x1b[32m%s%s\x1b[m", spec.shortopt ? ", " : "", s != 1 ? "--" : "", spec.longopt);
             if (!strcmp("help", spec.longopt))
                 redefined_help = true;
         }
@@ -106,7 +106,7 @@ bool __optget_internal(int argc, char **argv, size_t num_specs, OptGetSpec specs
 
         // Handle non-option arguments
         if (*arg != '-') {
-            __OPTGET_TRY(arg, specs[0].parser(arg, specs[0].userdata));
+            __OPTGET_TRY(arg, specs[1].parser(arg, specs[1].userdata));
             continue;
         }
 
@@ -114,7 +114,7 @@ bool __optget_internal(int argc, char **argv, size_t num_specs, OptGetSpec specs
         OptGetSpec spec;
         if (arg[1] == '-') {
             // long option
-            for (spec = specs[s = 1]; s < num_specs; spec = specs[++s]) {
+            for (spec = specs[s = 2]; s < num_specs; spec = specs[++s]) {
                 if (!spec.longopt || strcmp(spec.longopt, &arg[2])) {
                     if (!strcmp("help", &arg[2])) is_help = true;
                     continue;
@@ -133,7 +133,7 @@ bool __optget_internal(int argc, char **argv, size_t num_specs, OptGetSpec specs
             }
         } else {
             while (*(++arg)) {
-                for (spec = specs[s = 1]; s < num_specs; spec = specs[++s]) {
+                for (spec = specs[s = 2]; s < num_specs; spec = specs[++s]) {
                     if (!spec.shortopt || spec.shortopt != *arg) {
                         if ('h' == *arg) is_help = true;
                         continue;

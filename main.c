@@ -538,7 +538,8 @@ int main(int argc, char *argv[]) {
     DynArr(compiled_regex_fn) regex_fns = 0;
 
     bool r = optget(((OptGetSpec[]) {
-        {0, 0, "[-n <file>] [-d <file>] [-o <file> ] [-v] <regex>...", push_regex, &regexe},
+        {0, 0, "[-n <file>] [-d <file>] [-o <file> ] [-v] <regex>...", ogp_fail, 0},
+        {0, "<regex>", "a regular expression to match against lines of input", push_regex, &regexe},
         {'n', "dump-nfa", "save dot representation of nfa to file", open_file, &nfafile},
         {'d', "dump-dfa", "save dot representation of dfa to file", open_file, &dfafile},
         {'o', "output", "save generated machine code to file", open_file, &codefile},
@@ -547,7 +548,11 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < arrlen(regexe); i++) {
         DynArr(Node) nfa = parse(regexe[i]);
-        if (!nfa) continue;
+        if (!nfa) {
+            arrdel(regexe, i);
+            i--;
+            continue;
+        }
         if (nfafile) dump_graphviz(nfafile, nfa);
         DynArr(uint32_t) start_states = 0;
         DynArr(Node) reverse = reverse_automaton(nfa, &start_states);
@@ -576,13 +581,10 @@ int main(int argc, char *argv[]) {
         arrfree(dfa);
     }
 
-
-    if (!r || !arrlen(regexe)) {
-        fputs("Need at least one regular expression argument.\nTry -h for help.\n", stderr);
+    if (!r || !arrlen(regex_fns)) {
+        fputs("Need at least one regular expression.\nTry -h for help.\n", stderr);
         return 0;
     }
-
-    arrfree(regexe);
 
     if (nfafile) fclose(nfafile);
     if (dfafile) fclose(dfafile);
@@ -600,8 +602,9 @@ int main(int argc, char *argv[]) {
         if (!input_size) continue;
         if (input[input_size - 1] == '\n')
             input[input_size - 1] = '\0';
-        puts("lame dfa match:\t\t\tcool jit match:");
+        printf("\x1b[4mlame dfa match:\x1b[m\t\t\t\x1b[4mcool jit match:\x1b[m");
         for (int i = 0; i < arrlen(dfas_mat); ++i != arrlen(dfas_mat) ? putchar('\t') : 0) {
+            printf("\n\x1b[1m%s\x1b[m:\n", regexe[i]);
             struct timespec start_cpu_time, end_cpu_time;
 
             if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_cpu_time) < 0) {
@@ -635,8 +638,8 @@ int main(int argc, char *argv[]) {
                 (end_cpu_time.tv_nsec - start_cpu_time.tv_nsec) / 1000000.0;
 
             printf("\t\t%s, %lfms", matches ? "true" : "false", cpu_time);
-            putchar('\n');
         }
+        putchar('\n');
     }
 
     for (int i = 0; i < arrlen(dfas_mat); i++)
