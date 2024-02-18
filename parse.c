@@ -26,8 +26,13 @@ typedef struct{
 }ParserState;
 
 void parseerror(char* msg, char *regex, int location){
+    int len = location;
+    for (int i = 0; i < location; i++) {
+        if (((regex[i] >> 6) & 3) == 2)
+            len--;
+    }
     fprintf(stderr, "%s\n%*s" CONTEXT_ARROW "\n" ERROR_PREFIX "%s\n",
-        regex ? regex : "", location, "", msg);
+        regex ? regex : "", len, "", msg);
 }
 
 int prec_of(char op){
