@@ -1,9 +1,18 @@
 .intel_syntax noprefix
 
 .global load_next_char_nonfinalstate_template
-.global load_next_char_nonfinalstate_template_end
+.global load_next_char_nonfinalstate_template_len
 .global load_next_char_finalstate_template
-.global load_next_char_finalstate_template_end
+.global load_next_char_finalstate_template_len
+
+.data
+
+load_next_char_nonfinalstate_template_len: 
+.int load_next_char_nonfinalstate_template_end - load_next_char_nonfinalstate_template
+load_next_char_finalstate_template_len:
+.int load_next_char_finalstate_template_end - load_next_char_finalstate_template
+
+.text
 
 load_next_char_nonfinalstate_template:
 mov al, byte ptr [rdi]

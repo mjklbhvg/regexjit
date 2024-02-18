@@ -51,9 +51,9 @@ typedef struct{
 }CodegenState;
 
 extern unsigned char load_next_char_nonfinalstate_template;
-extern unsigned char load_next_char_nonfinalstate_template_end;
+extern uint32_t load_next_char_nonfinalstate_template_len;
 extern unsigned char load_next_char_finalstate_template;
-extern unsigned char load_next_char_finalstate_template_end;
+extern uint32_t load_next_char_finalstate_template_len;
 
 void asm_zero_rax(CodegenState *state){
     // no rex prefix is needed
@@ -72,12 +72,10 @@ void asm_load_next_char(CodegenState *state, bool is_final){
     uint32_t codelen;
     unsigned char* code;
     if(is_final){
-        codelen = &load_next_char_finalstate_template_end 
-            - &load_next_char_finalstate_template;
+        codelen = load_next_char_finalstate_template_len;
         code = &load_next_char_finalstate_template;
     }else{
-        codelen = &load_next_char_nonfinalstate_template_end 
-            - &load_next_char_nonfinalstate_template;
+        codelen = load_next_char_nonfinalstate_template_len;
         code = &load_next_char_nonfinalstate_template;
     }
 
