@@ -364,7 +364,7 @@ void epsilon_closure(DynArr(uint32_t) *states, DynArr(Node) nfa) {
             // FIXME: this would be better with binary search for larger states
             // FIXME: probably even more better with a bit set
             int64_t idx;
-            if ((idx = insert_sorted(states, reachable_state)) > 0) {
+            if ((idx = insert_sorted(states, reachable_state)) >= 0) {
                 arrpush(worklist, idx);
             }
         }
