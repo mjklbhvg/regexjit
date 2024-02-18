@@ -9,6 +9,12 @@
 
 #define FAILSTATE (uint32_t)-1
 
+#define LOG(...) do { if (VERBOSE) fprintf(stderr, __VA_ARGS__); } while (0)
+#define LOG_INDENTWIDTH 3
+
+bool VERBOSE = false;
+int DEPTH = 0;
+
 void sort_range(Range* sym, uint32_t* dest, int l, int r){
     #define swap(a,b) {\
         uint32_t tmp_dest = dest[a];\
@@ -65,7 +71,7 @@ void asm_zero_rax(CodegenState *state){
 }
 
 void asm_load_next_char(CodegenState *state, bool is_final){
-    fprintf(stderr, "load next char: final: %d\n", is_final);
+    LOG("%*sLOAD NEXT (final: %s)\n", DEPTH, "", is_final ? "true" : "false");
     //mov al, [rdi]
     //inc rdi
 
@@ -89,7 +95,6 @@ void asm_cmp(CodegenState *state, unsigned char imm){
     arrpush(state->code, imm);
 }
 uint32_t asm_jmpg(CodegenState *state, uint32_t label){
-    fprintf(stderr, "jmpg to %u\n", label);
     // jg rel32
     arrpush(state->code, 0x0f);
     arrpush(state->code, 0x8f);
@@ -106,12 +111,14 @@ void fix_jmp(CodegenState *state, uint32_t reloc, uint32_t code_loc){
 
 void jmp_state(CodegenState *state, uint32_t dest){
     if(dest == FAILSTATE){
+        LOG("%*sJMP FAILSTATE\n", DEPTH, "");
         // here we need to zero al because it holds the input char
         asm_zero_rax(state);
 
         // ret
         arrpush(state->code, 0xc3);
     }else{
+        LOG("%*sJMP STATE_%d\n", DEPTH, "", dest);
         // jmp rel32
         arrpush(state->code, 0xe9);
         arrpush(state->jmp_relocs, arrlen(state->code));
@@ -123,22 +130,27 @@ void jmp_state(CodegenState *state, uint32_t dest){
 
 void gen_transitions(CodegenState *state, unsigned char *mins, uint32_t *dest, int l, int r){
     if(l>r){
-        printf("end dings l:%d r:%d\n", l, r);
         jmp_state(state, dest[l]);
         return;
     }
     int i = (l+r)/2;
-    printf("i: %d\n", i);
+    LOG("%*sIF input <= %d {\n", DEPTH, "", mins[i]);
     asm_cmp(state, mins[i]);
     uint32_t reloc = asm_jmpg(state, 0);
+    if (VERBOSE) DEPTH += LOG_INDENTWIDTH;
     gen_transitions(state, mins, dest, l, i-1);
+
+    LOG("%*s} ELSE {\n", DEPTH - LOG_INDENTWIDTH, "");
     fix_jmp(state, reloc, arrlen(state->code));
     gen_transitions(state, mins, dest, i+1, r);
+
+    if (VERBOSE) DEPTH -= LOG_INDENTWIDTH;
+    LOG("%*s}\n", DEPTH, "");
 }
 
 
-compiled_regex_fn compile_regex(DynArr(Node) *dfa){
-
+compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose){
+    VERBOSE = verbose;
 
     CodegenState state = {0};
 
@@ -146,7 +158,7 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa){
     asm_zero_rax(&state);
 
     for (int i = 0; i < arrlen(*dfa); i++) {
-        printf("---------- State %d ---------------\n", i);
+        LOG("--------------------- State %d ---------------------\n", i);
         // DynArrs are never resized so this is fine
         DynArr(Range) sym = (*dfa)[i].sym;
         DynArr(uint32_t) dest = (*dfa)[i].dest;
@@ -171,11 +183,11 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa){
             prev = sym[i].end;
         }
         arrpush(states, FAILSTATE); // there is 1 more range than there are checks
-        printf("arr: ");
+        LOG("// segmented state transitions: (segment end, destination state)\n//");
         for (int i = 0; i < arrlen(ends); i++) {
-            printf("(%c, %d) ", ends[i], states[i]);
+            LOG("(%c, %d) ", ends[i], states[i]);
         }
-        printf("\n");
+        LOG("\n");
         gen_transitions(&state, ends, states, 0, arrlen(ends)-1);
     }
 
@@ -186,10 +198,6 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa){
         fix_jmp(&state, state.jmp_relocs[i], state.labels[label]);
     }
 
-    FILE *outfile = fopen("code", "w");
-    fwrite(state.code, arrlen(state.code), 1, outfile);
-    fclose(outfile);
-
     void* memory =
         mmap(0, arrlen(state.code), PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if(memory==MAP_FAILED){
@@ -198,6 +206,10 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa){
     }
     memcpy(memory, state.code, arrlen(state.code));
     mprotect(memory, arrlen(state.code), PROT_EXEC);
+
+    *len = arrlen(state.code);
+
+    LOG("Generated %lu bytes of code\n", arrlen(state.code));
 
     return memory;
 }

@@ -37,4 +37,4 @@ typedef struct {
 
 typedef bool (*compiled_regex_fn)(char* str);
 
-compiled_regex_fn compile_regex(DynArr(Node) *dfa);
+compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose);

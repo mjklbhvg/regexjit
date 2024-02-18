@@ -530,20 +530,20 @@ bool lame_dfa_match(DfaMat *trans, char *str) {
 
 int main(int argc, char *argv[]) {
 
-    FILE *nfafile = 0, *dfafile = 0;
+    FILE *nfafile = 0, *dfafile = 0, *codefile = 0;
+    bool verbose = false;
 
     DynArr(char *) regexe = 0;
     DynArr(DfaMat *) dfas_mat = 0;
     DynArr(compiled_regex_fn) regex_fns = 0;
 
     bool r = optget(((OptGetSpec[]) {
-        {0, 0, "[-n <file>] [-d <file>] -r <regex>", ogp_fail, 0},
+        {0, 0, "[-n <file>] [-d <file>] [-o <file> ] [-v] <regex>...", push_regex, &regexe},
         {'n', "dump-nfa", "save dot representation of nfa to file", open_file, &nfafile},
         {'d', "dump-dfa", "save dot representation of dfa to file", open_file, &dfafile},
-        {'r', "regex", "regex to match against lines of stdin", push_regex, &regexe}
+        {'o', "output", "save generated machine code to file", open_file, &codefile},
+        {'v', "verbose", "log machine code generation", 0, &verbose}
     }));
-
-    if (!r || !arrlen(regexe)) exit(1);
 
     for (int i = 0; i < arrlen(regexe); i++) {
         DynArr(Node) nfa = parse(regexe[i]);
@@ -565,21 +565,28 @@ int main(int argc, char *argv[]) {
         }
         arrpush(dfas_mat, t);
 
-        compiled_regex_fn f = compile_regex(&dfa);
+        size_t len;
+        compiled_regex_fn f = compile_regex(&dfa, &len, verbose);
         arrpush(regex_fns, f);
+
+        if (codefile)
+            fwrite(*(char **)&f, len, 1, codefile);
 
         arrfree(nfa);
         arrfree(dfa);
     }
 
 
-    if (!arrlen(regexe))
+    if (!r || !arrlen(regexe)) {
+        fputs("Need at least one regular expression argument.\nTry -h for help.\n", stderr);
         return 0;
+    }
 
     arrfree(regexe);
 
     if (nfafile) fclose(nfafile);
     if (dfafile) fclose(dfafile);
+    if (codefile) fclose(codefile);
 
     // lol
     if (nfafile || dfafile)
