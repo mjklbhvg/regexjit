@@ -209,5 +209,5 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose){
 
     LOG("Generated %lu bytes of code\n", arrlen(state.code));
 
-    return memory;
+    return *(compiled_regex_fn *)&memory;
 }

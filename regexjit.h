@@ -1,13 +1,8 @@
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #define DynArr(X) X*
-
-#define EPSILON (Range){0}
-
-#define CONTEXT_ARROW  "\x1b[1;91m^\x1b[m"
-#define ERROR_PREFIX   "\x1b[31;1;5mError:\x1b[m "
-
 
 typedef struct {
     size_t state_count;
@@ -24,17 +19,14 @@ typedef struct Node{
     bool final;
 }Node;
 
-typedef struct{
-    uint32_t start; //inclusive
-    uint32_t end; //inclusive
-}SubExpr;
-
-typedef struct {
-    char op;
-    int source_location;
-} OpToken;
-
-
 typedef bool (*compiled_regex_fn)(char* str);
 
 compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose);
+
+void dump_graphviz(FILE *f, DynArr(Node) nodes);
+
+DynArr(Node) parse(char *str);
+
+void add_trans(DynArr(Node) *nodes, uint32_t n1, uint32_t n2, Range r);
+
+void free_nodes(DynArr(Node) nodes);
