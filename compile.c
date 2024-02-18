@@ -72,8 +72,6 @@ void asm_zero_rax(CodegenState *state){
 
 void asm_load_next_char(CodegenState *state, bool is_final){
     LOG("%*sLOAD NEXT (final: %s)\n", DEPTH, "", is_final ? "true" : "false");
-    //mov al, [rdi]
-    //inc rdi
 
     uint32_t codelen;
     unsigned char* code;
