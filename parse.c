@@ -9,8 +9,8 @@
 #define ERROR_PREFIX   "\x1b[31;1;5mError:\x1b[m "
 
 typedef struct{
-    uint32_t start; // inclusive
-    uint32_t end;   // inclusive
+    uint32_t start; // index of start state node
+    uint32_t end;   // index of end state node
 }SubExpr;
 
 typedef struct{

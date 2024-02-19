@@ -10,7 +10,7 @@ typedef struct {
 } DfaMat;
 
 typedef struct {
-    unsigned char start, end;
+    unsigned char start, end; // both inclusive
 } Range;
 
 typedef struct Node{
