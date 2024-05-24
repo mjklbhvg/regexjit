@@ -7,7 +7,7 @@
 
 .data
 
-load_next_char_nonfinalstate_template_len: 
+load_next_char_nonfinalstate_template_len:
 .int load_next_char_nonfinalstate_template_end - load_next_char_nonfinalstate_template
 load_next_char_finalstate_template_len:
 .int load_next_char_finalstate_template_end - load_next_char_finalstate_template

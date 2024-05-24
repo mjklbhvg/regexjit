@@ -145,8 +145,13 @@ int apply_op(ParserState *p, OpToken op){
         case '^':{
             SubExpr b = arrpop(p->expr_stack);
             SubExpr a = arrpop(p->expr_stack);
+
+            ADD_NODE_PAIR(p->nodes, start, end);
+
+            add_trans(&p->nodes, start, a.start, EPSILON);
             add_trans(&p->nodes, a.end, b.start, EPSILON);
-            arrpush(p->expr_stack, ((SubExpr){a.start, b.end}));
+            add_trans(&p->nodes, b.end, end, EPSILON);
+            arrpush(p->expr_stack, ((SubExpr){start, end}));
         }break;
         case '|':{
             SubExpr b = arrpop(p->expr_stack);
