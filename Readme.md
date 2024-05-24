@@ -5,7 +5,7 @@ This is an attempt to compile regular expressions to machine code.
 ## overview
 ### parse.c
 Parser that outputs nfas for given input regexprs.
-Use the '-d' option to output the nfas in dot representation.
+Use the '-n' option to output the nfas in dot representation.
 
 Supported syntax:
 - +, *, ?, |, .
@@ -14,6 +14,7 @@ Supported syntax:
 ### main.c
 Takes the nfas and turns them into minimal dfas using
 https://en.wikipedia.org/wiki/DFA_minimization#Brzozowski's_algorithm.
+Output minimal dfas using the '-d' option.
 
 ### compile.c
 generate x86_64 code for a given dfa.
