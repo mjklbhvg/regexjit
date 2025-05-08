@@ -205,7 +205,7 @@ compiled_regex_fn compile_regex(DynArr(Node) *dfa, size_t *len, bool verbose){
         exit(1);
     }
     memcpy(memory, state.code, arrlen(state.code));
-    mprotect(memory, arrlen(state.code), PROT_EXEC);
+    mprotect(memory, arrlen(state.code), PROT_READ|PROT_EXEC);
 
     *len = arrlen(state.code);
 

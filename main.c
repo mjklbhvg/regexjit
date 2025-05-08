@@ -292,7 +292,7 @@ int main(int argc, char *argv[]) {
         arrpush(regex_fns, f);
 
         if (codefile)
-            fwrite(*(char **)&f, len, 1, codefile);
+            fwrite((void *)f, len, 1, codefile);
 
         free_nodes(dfa);
     }
